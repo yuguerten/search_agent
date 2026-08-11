@@ -13,6 +13,42 @@ from app.models import PaperCandidate
 ATOM = "http://www.w3.org/2005/Atom"
 NS = {"atom": ATOM}
 
+_STOPWORDS = {
+    "about",
+    "after",
+    "also",
+    "between",
+    "from",
+    "into",
+    "more",
+    "over",
+    "than",
+    "that",
+    "their",
+    "these",
+    "this",
+    "using",
+    "what",
+    "when",
+    "where",
+    "which",
+    "with",
+}
+
+
+def build_arxiv_query(query: str) -> str:
+    """Convert a natural-language query into an arXiv Boolean term query."""
+
+    terms = []
+    for token in re.findall(r"[a-z0-9]+", query.lower()):
+        if len(token) < 3 or token in _STOPWORDS or token in terms:
+            continue
+        terms.append(token)
+
+    if not terms:
+        raise ValueError("arXiv query must contain at least one searchable term")
+    return " AND ".join(f"all:{term}" for term in terms)
+
 
 def _clean_text(value: str | None) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
@@ -84,7 +120,7 @@ async def search_arxiv(
 
     settings = get_settings()
     params = {
-        "search_query": f'all:"{query.strip()}"',
+        "search_query": build_arxiv_query(query),
         "start": 0,
         "max_results": max_results,
         "sortBy": "submittedDate",

@@ -1,4 +1,11 @@
-from app.tools.arxiv import parse_arxiv_feed
+from app.tools.arxiv import build_arxiv_query, parse_arxiv_feed
+
+
+def test_build_arxiv_query_splits_natural_language_terms() -> None:
+    assert build_arxiv_query("scaling laws in vision transformers training data") == (
+        "all:scaling AND all:laws AND all:vision AND all:transformers "
+        "AND all:training AND all:data"
+    )
 
 
 def test_parse_arxiv_feed_normalizes_metadata() -> None:
