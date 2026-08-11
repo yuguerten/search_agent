@@ -1,0 +1,50 @@
+# Agentic Literature Researcher
+
+A Google ADK and LiteLLM research workflow that asks clarification questions,
+searches recent arXiv papers, enriches them with Semantic Scholar citations,
+stores metadata and embeddings in PostgreSQL/pgvector, and produces a cited
+five-paper synthesis.
+
+## Architecture
+
+```text
+User
+  -> Clarifier (one question per turn)
+  -> Dispatcher (structured intent and search queries)
+  -> Researcher -> Critic (maximum 3 iterations)
+  -> Dispatcher -> Synthesizer -> Report
+```
+
+The researcher applies the strict rolling two-year filter before ranking. The
+ranking combines relevance, age-adjusted citation impact, freshness, and metadata
+quality. The critic performs deterministic checks before its semantic review.
+
+## Setup
+
+```bash
+uv sync
+cp .env.example .env
+docker compose up -d postgres
+```
+
+Set the LiteLLM credentials and model in `.env`. Set
+`SEMANTIC_SCHOLAR_API_KEY` when available; the API can be used without a key at
+lower rate limits.
+
+Run the ADK playground from the repository root:
+
+```bash
+uv run adk web
+```
+
+## Verification
+
+```bash
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+```
+
+The external API and PostgreSQL tools are isolated from the unit tests. Add
+integration tests with mocked HTTP responses before enabling live end-to-end runs.
+
