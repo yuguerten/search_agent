@@ -6,7 +6,9 @@ from collections.abc import Iterable
 from datetime import date, timedelta
 from typing import Any
 
+from app.config import get_settings
 from app.models import PaperCandidate
+from app.tools.context import ToolContext, canonicalize_papers
 
 
 def _tokens(text: str) -> set[str]:
@@ -109,13 +111,25 @@ def rank_papers_tool(
     keywords: list[str],
     as_of: str,
     recent_days: int = 730,
+    tool_context: ToolContext | None = None,
 ) -> list[dict[str, Any]]:
     """ADK tool that filters and ranks candidates deterministically."""
 
+    settings = get_settings()
+    policy_end = date.today()
+    policy_start = policy_end - timedelta(days=settings.recent_days)
     ranked = rank_papers(
-        [PaperCandidate.model_validate(paper) for paper in papers],
+        canonicalize_papers(papers, tool_context),
         keywords=keywords,
-        as_of=date.fromisoformat(as_of),
-        recent_days=recent_days,
+        as_of=policy_end,
+        recent_days=settings.recent_days,
     )
-    return [paper.model_dump(mode="json") for paper in ranked]
+    result = [paper.model_dump(mode="json") for paper in ranked]
+    if tool_context is not None:
+        tool_context.state["research_window"] = {
+            "start_date": policy_start.isoformat(),
+            "end_date": policy_end.isoformat(),
+            "recent_days": settings.recent_days,
+        }
+        tool_context.state["ranked_papers"] = result
+    return result

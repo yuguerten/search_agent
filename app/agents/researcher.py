@@ -9,15 +9,20 @@ from app.tools.semantic_scholar import enrich_with_semantic_scholar
 
 researcher_agent = Agent(
     name="researcher_agent",
+    include_contents="none",
     model=build_llm(),
     instruction="""You are the research specialist.
 
-For each iteration, use the dispatcher search queries to search arXiv. Enrich
+For each iteration, make at most one arXiv search call and request no more than five results. Use the dispatcher search queries to search arXiv. Enrich
 candidate papers with Semantic Scholar citation metadata, apply the strict
 two-year date filter, and rank candidates with the deterministic ranking tool.
-Never invent citation counts, dates, abstracts, or authors. Keep all candidates in
-shared state and preserve source identifiers. Embed eligible papers and persist
-them in PostgreSQL with pgvector after ranking. If the critic supplied feedback,
+Use the configured rolling window from the tools (last 730 days ending today).
+Never invent citation counts, dates, abstracts, authors, arXiv IDs, or URLs. Do not
+pass a historical date range inferred from the conversation. Pass
+the exact paper list returned by search_arxiv into the enrichment and ranking tools;
+do not reconstruct paper dictionaries or convert authors into a string. Keep all
+candidates in shared state and preserve source identifiers. Embed eligible papers
+and persist them in PostgreSQL with pgvector after ranking. If the critic supplied feedback,
 adjust the next search queries to address it.""",
     tools=[
         search_arxiv,

@@ -1,4 +1,9 @@
 from app.tools.arxiv import build_arxiv_query, parse_arxiv_feed
+from app.tools.semantic_scholar import _without_arxiv_version
+
+
+def test_semantic_scholar_ids_drop_arxiv_version_suffix() -> None:
+    assert _without_arxiv_version("2607.28611v1") == "2607.28611"
 
 
 def test_build_arxiv_query_splits_natural_language_terms() -> None:

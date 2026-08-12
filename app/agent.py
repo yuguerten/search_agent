@@ -6,6 +6,7 @@ from app.agents.model import build_llm
 
 root_agent = Agent(
     name="literature_research_dispatcher",
+    rerun_on_resume=True,
     model=build_llm(),
     instruction="""You are the user-facing academic research coordinator.
 

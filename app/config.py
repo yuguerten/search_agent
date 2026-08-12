@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+asyncpg://postgres:postgres@localhost:5432/literature_agent"
     )
-    embedding_model: str = "openai/text-embedding-3-small"
-    embedding_dimensions: int = 1536
+    embedding_model: str = "text-embedding-nomic-embed-text-v1.5"
+    embedding_dimensions: int = 768
 
     recent_days: int = 730
     max_papers: int = 5

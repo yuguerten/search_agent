@@ -6,6 +6,7 @@ from app.tools.loop import stop_research_loop
 
 critic_agent = Agent(
     name="critic_agent",
+    include_contents="none",
     model=build_llm(),
     instruction="""You are the paper-quality critic.
 

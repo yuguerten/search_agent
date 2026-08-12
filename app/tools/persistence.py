@@ -2,17 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.models import PaperCandidate
 from app.storage.postgres import PostgresPaperStore
+from app.tools.context import ToolContext, canonicalize_papers
 
 
 async def persist_papers(
     papers: list[dict[str, Any]],
     embeddings: list[list[float]] | None = None,
+    tool_context: ToolContext | None = None,
 ) -> dict[str, Any]:
     """Persist ranked papers and embeddings in PostgreSQL with pgvector."""
 
-    candidates = [PaperCandidate.model_validate(paper) for paper in papers]
+    candidates = canonicalize_papers(papers, tool_context)
     store = PostgresPaperStore()
     try:
         await store.create_schema()

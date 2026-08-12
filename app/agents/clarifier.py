@@ -55,6 +55,7 @@ def route_completed_clarification(*, callback_context):
 
 clarifier_agent = Agent(
     name="clarifier_agent",
+    rerun_on_resume=True,
     description="Asks one targeted clarification question at a time before research begins.",
     model=build_llm(),
     instruction="""You are the clarification specialist for an academic research assistant.

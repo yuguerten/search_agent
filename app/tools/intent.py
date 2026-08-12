@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+from datetime import date, timedelta
 
+from app.config import get_settings
 from app.models import ResearchIntent
 
 _STOP_WORDS = {
@@ -44,10 +46,15 @@ def update_intent(
     context = " ".join([original_question, *clarification_answers]).strip()
     keywords = extract_keyword_candidates(context)
     clarified_question = " ".join(clarification_answers).strip() or None
+    settings = get_settings()
+    end_date = date.today()
+    start_date = end_date - timedelta(days=settings.recent_days)
     intent = ResearchIntent(
         original_question=original_question,
         clarified_question=clarified_question,
         keywords=keywords,
         target_paper_count=target_paper_count,
+        start_date=start_date,
+        end_date=end_date,
     )
     return intent.model_dump(mode="json")

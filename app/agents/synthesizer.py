@@ -1,17 +1,57 @@
+import json
+
 from google.adk.agents import Agent
+from google.genai import types
 
 from app.agents.model import build_llm
 
+
+def _synthesizer_instruction(context) -> str:
+    approved = context.state.get("approved_papers", [])
+    evidence = json.dumps(approved, ensure_ascii=False, default=str)
+    return f"""You are the final academic synthesizer.
+
+Use only the verified evidence JSON below. Do not create papers, authors, dates,
+citation counts, URLs, findings, or references that are not present in it. Every
+paper mentioned in the report must use its exact arXiv ID and title from the JSON.
+Write a concise report with an introduction, paper-by-paper evidence, synthesis,
+comparison, limitations, and research gaps. Cite papers as [n] and copy URLs
+exactly from the evidence. Do not claim more iterations than the configured loop maximum.
+
+Verified evidence JSON:
+{evidence}
+"""
+
+
+def guard_without_approved_papers(*, callback_context):
+    approved = callback_context.state.get("approved_papers", [])
+    if approved:
+        return None
+
+    candidates = callback_context.state.get("candidates", [])
+    target = callback_context.state.get("target_paper_count", 5)
+    maximum = callback_context.state.get("max_iterations", 3)
+    return types.Content(
+        role="model",
+        parts=[
+            types.Part(
+                text=(
+                    "Research could not produce a validated final report. "
+                    f"Approved papers: 0/{target}. Validated candidates collected: "
+                    f"{len(candidates)}. The research loop was bounded to "
+                    f"{maximum} iterations. No paper-specific claims or references "
+                    "are included because the critic approved no papers."
+                )
+            )
+        ],
+    )
+
+
 synthesizer_agent = Agent(
     name="synthesizer_agent",
+    include_contents="none",
     model=build_llm(),
-    instruction="""You are the final academic synthesizer.
-
-Use only the five approved papers and their verified metadata from shared state.
-Write a clear report with: an introduction to the subject, paper-by-paper
-explanations using [n] references, cross-paper synthesis, a comparison of methods
-and findings, limitations, research gaps, future research directions, and a final
-reference list containing arXiv and Semantic Scholar links. Do not add unsupported
-claims or citations. If fewer than five papers passed review, state that plainly.""",
+    instruction=_synthesizer_instruction,
+    before_agent_callback=guard_without_approved_papers,
     output_key="final_report",
 )

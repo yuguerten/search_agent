@@ -18,3 +18,5 @@ def test_update_intent_is_serializable() -> None:
     assert intent["original_question"] == "Find recent papers about agentic research"
     assert "evaluation" in intent["keywords"]
     assert intent["target_paper_count"] == 5
+    assert intent["start_date"] == "2024-08-12"
+    assert intent["end_date"] == "2026-08-12"

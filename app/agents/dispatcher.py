@@ -11,7 +11,8 @@ dispatcher_agent = Agent(
 Read the original question and all clarification answers from session state. Keep
 the research intent structured and concise. After every user answer, call the
 update_intent tool with the complete answer list. Produce search queries that
-preserve the user's scope and constraints. Do not write the final report and do
+preserve the user's scope and constraints. The date policy is the configured
+rolling window ending today; never invent a fixed range such as 2019-2024. Do not write the final report and do
 not invent paper metadata. Start the research workflow only when the intent is
 specific enough to search.""",
     tools=[update_intent],
