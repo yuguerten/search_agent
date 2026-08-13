@@ -4,7 +4,6 @@ from typing import Any
 
 from app.config import get_settings
 from app.models import PaperCandidate
-from app.tools.context import ToolContext, canonicalize_papers
 
 
 async def embed_papers(papers: list[PaperCandidate]) -> list[list[float]]:
@@ -25,11 +24,3 @@ async def embed_papers(papers: list[PaperCandidate]) -> list[list[float]]:
         }
     response = await aembedding(model=model, input=inputs, **kwargs)
     return [item["embedding"] for item in response["data"]]
-
-
-async def embed_papers_tool(
-    papers: list[dict[str, Any]], tool_context: ToolContext | None = None
-) -> list[list[float]]:
-    """ADK tool wrapper for embedding normalized paper metadata."""
-
-    return await embed_papers(canonicalize_papers(papers, tool_context))

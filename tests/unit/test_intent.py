@@ -1,3 +1,6 @@
+from datetime import date, timedelta
+
+from app.config import get_settings
 from app.tools.intent import extract_keyword_candidates, update_intent
 
 
@@ -18,5 +21,7 @@ def test_update_intent_is_serializable() -> None:
     assert intent["original_question"] == "Find recent papers about agentic research"
     assert "evaluation" in intent["keywords"]
     assert intent["target_paper_count"] == 5
-    assert intent["start_date"] == "2024-08-12"
-    assert intent["end_date"] == "2026-08-12"
+    today = date.today()
+    expected_start = today - timedelta(days=get_settings().recent_days)
+    assert intent["start_date"] == expected_start.isoformat()
+    assert intent["end_date"] == today.isoformat()

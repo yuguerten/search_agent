@@ -4,16 +4,21 @@ from typing import Any
 
 from app.storage.postgres import PostgresPaperStore
 from app.tools.context import ToolContext, canonicalize_papers
+from app.tools.embeddings import embed_papers
 
 
 async def persist_papers(
     papers: list[dict[str, Any]],
-    embeddings: list[list[float]] | None = None,
     tool_context: ToolContext | None = None,
 ) -> dict[str, Any]:
-    """Persist ranked papers and embeddings in PostgreSQL with pgvector."""
+    """Embed and persist papers without exposing vectors to the language model.
+
+    The embedding response stays inside Python: it is passed directly to the
+    PostgreSQL adapter and only a small status object is returned to the agent.
+    """
 
     candidates = canonicalize_papers(papers, tool_context)
+    embeddings = await embed_papers(candidates)
     store = PostgresPaperStore()
     try:
         await store.create_schema()

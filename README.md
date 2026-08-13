@@ -48,3 +48,11 @@ uv run ruff format --check .
 The external API and PostgreSQL tools are isolated from the unit tests. Add
 integration tests with mocked HTTP responses before enabling live end-to-end runs.
 
+### PostgreSQL / pgvector
+
+The database must have the pgvector server extension installed. The application enables it automatically with `CREATE EXTENSION IF NOT EXISTS vector` before creating the papers table. If the database user cannot create extensions, run this once as a PostgreSQL administrator:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
