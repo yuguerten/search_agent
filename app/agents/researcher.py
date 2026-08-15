@@ -1,10 +1,39 @@
+import json
+
 from google.adk.agents import Agent
+from google.genai import types
 
 from app.agents.model import build_llm
 from app.tools.arxiv import search_arxiv
 from app.tools.persistence import persist_papers
 from app.tools.ranking import rank_papers_tool
 from app.tools.semantic_scholar import enrich_with_semantic_scholar
+
+
+def publish_research_status(*, callback_context):
+    candidates = callback_context.state.get("candidates", [])
+    ranked = callback_context.state.get("ranked_papers", [])
+    callback_context.state["research_status"] = {
+        "status": "research_complete",
+        "candidate_count": len(candidates),
+        "ranked_count": len(ranked),
+    }
+    return types.Content(
+        role="model",
+        parts=[
+            types.Part(
+                text=json.dumps(
+                    {
+                        "status": "research_complete",
+                        "candidate_count": len(candidates),
+                        "ranked_count": len(ranked),
+                    },
+                    separators=(",", ":"),
+                )
+            )
+        ],
+    )
+
 
 researcher_agent = Agent(
     name="researcher_agent",
@@ -25,6 +54,7 @@ after ranking; it embeds papers locally and writes vectors directly to PostgreSQ
 Never call or expose embeddings separately, and never pass embedding arrays through
 the LLM. If the critic supplied feedback,
 adjust the next search queries to address it.""",
+    after_agent_callback=publish_research_status,
     tools=[
         search_arxiv,
         enrich_with_semantic_scholar,

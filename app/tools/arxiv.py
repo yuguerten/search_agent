@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.models import PaperCandidate
 from app.tools.context import ToolContext
 from app.tools.http import request_with_retries
+from app.tools.intent import build_search_queries
 
 ATOM = "http://www.w3.org/2005/Atom"
 NS = {"atom": ATOM}
@@ -51,17 +52,30 @@ _MAX_ABSTRACT_CHARS = 1600
 
 
 def build_arxiv_query(query: str) -> str:
-    """Convert a natural-language query into an arXiv Boolean term query."""
+    """Convert arbitrary natural-language topic text into an arXiv term query."""
 
-    terms = []
+    terms: list[str] = []
     for token in re.findall(r"[a-z0-9]+", query.lower()):
-        if len(token) < 3 or token in _STOPWORDS or token in terms:
+        if (
+            len(token) < 3
+            or token in _STOPWORDS
+            or token
+            in {"date", "dates", "last", "only", "papers", "query", "recent", "years"}
+            or token.isdigit()
+            or (len(token) == 4 and token.startswith(("19", "20")))
+            or token in terms
+        ):
             continue
         terms.append(token)
 
     if not terms:
         raise ValueError("arXiv query must contain at least one searchable term")
-    return " AND ".join(f"all:{term}" for term in terms)
+    if len(terms) <= 4:
+        return " AND ".join(f"all:{term}" for term in terms)
+
+    anchors = " AND ".join(f"all:{term}" for term in terms[:2])
+    alternatives = " OR ".join(f"all:{term}" for term in terms[2:8])
+    return f"{anchors} AND ({alternatives})"
 
 
 def _clean_text(value: str | None) -> str:
@@ -133,6 +147,19 @@ async def search_arxiv(
     source APIs can return records with incomplete or inconsistent date data.
     """
 
+    search_index = 0
+    if tool_context is not None:
+        search_index = tool_context.state.get("arxiv_search_calls", 0)
+        queries = tool_context.state.get("search_queries", [])
+        if not queries:
+            intent = tool_context.state.get("research_intent", {})
+            if isinstance(intent, dict):
+                queries = intent.get("search_queries", []) or build_search_queries(
+                    intent.get("keywords", [])
+                )
+        if queries:
+            query = queries[search_index % len(queries)]
+            tool_context.state["active_search_query"] = query
     arxiv_query = build_arxiv_query(query)
     effective_max_results = min(max_results, _MAX_ARXIV_RESULTS)
     settings = get_settings()

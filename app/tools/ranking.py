@@ -79,7 +79,9 @@ def rank_papers(
             / 4
         )
 
-    relevance_scores = _normalise(relevance_values)
+    # Relevance is an absolute topical overlap, not a batch-relative score.
+    # Normalizing it would turn an all-irrelevant batch into all-1.0 scores.
+    relevance_scores = relevance_values
     citation_scores = _normalise(citation_values)
     freshness_scores = _normalise(freshness_values)
 
@@ -118,9 +120,14 @@ def rank_papers_tool(
     settings = get_settings()
     policy_end = date.today()
     policy_start = policy_end - timedelta(days=settings.recent_days)
+    effective_keywords = keywords
+    if tool_context is not None:
+        intent = tool_context.state.get("research_intent")
+        if isinstance(intent, dict) and intent.get("keywords"):
+            effective_keywords = intent["keywords"]
     ranked = rank_papers(
         canonicalize_papers(papers, tool_context),
-        keywords=keywords,
+        keywords=effective_keywords,
         as_of=policy_end,
         recent_days=settings.recent_days,
     )

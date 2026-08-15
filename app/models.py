@@ -12,6 +12,7 @@ class ResearchIntent(BaseModel):
     original_question: str
     clarified_question: str | None = None
     keywords: list[str] = Field(default_factory=list)
+    search_queries: list[str] = Field(default_factory=list)
     inclusion_criteria: list[str] = Field(default_factory=list)
     exclusion_criteria: list[str] = Field(default_factory=list)
     start_date: date | None = None

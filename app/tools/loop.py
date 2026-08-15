@@ -1,16 +1,30 @@
 from google.adk.tools.tool_context import ToolContext
 
+from app.config import get_settings
+
 
 def stop_research_loop(tool_context: ToolContext) -> dict[str, str]:
-    """Stop the ADK loop when the critic has approved the target paper count."""
+    """Stop only when the cumulative unique approval target is reached."""
 
     approved = tool_context.state.get("approved_papers", [])
-    target_count = tool_context.state.get("target_paper_count", 5)
-    if len(approved) >= target_count:
+    approved_ids = {
+        paper.get("arxiv_id")
+        for paper in approved
+        if isinstance(paper, dict) and paper.get("arxiv_id")
+    }
+    target_count = get_settings().max_papers
+    if len(approved_ids) >= target_count:
+        tool_context.state["loop_complete"] = True
         tool_context.actions.escalate = True
-        return {"status": "complete", "approved_count": str(len(approved))}
+        return {
+            "status": "complete",
+            "approved_count": str(len(approved_ids)),
+            "target_count": str(target_count),
+        }
+    tool_context.state["loop_complete"] = False
     return {
         "status": "continue",
-        "approved_count": str(len(approved)),
+        "approved_count": str(len(approved_ids)),
         "required_count": str(target_count),
+        "target_count": str(target_count),
     }

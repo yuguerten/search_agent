@@ -1,7 +1,8 @@
 from datetime import date
+from types import SimpleNamespace
 
 from app.models import PaperCandidate
-from app.tools.ranking import rank_papers, recent_papers
+from app.tools.ranking import rank_papers, rank_papers_tool, recent_papers
 
 
 def paper(arxiv_id: str, published_at: date, citations: int) -> PaperCandidate:
@@ -43,3 +44,34 @@ def test_rank_papers_returns_descending_scores() -> None:
     assert len(result) == 2
     assert result[0].final_score >= result[1].final_score
     assert all(0.0 <= item.final_score <= 1.0 for item in result)
+
+
+def test_rank_tool_uses_dispatcher_keywords_from_state() -> None:
+    papers = [
+        paper("a", date(2025, 1, 1), 10).model_dump(mode="json"),
+        paper("b", date(2025, 6, 1), 1).model_dump(mode="json"),
+    ]
+    context = SimpleNamespace(
+        state={"research_intent": {"keywords": ["unrelated-term"]}}
+    )
+
+    result = rank_papers_tool(
+        papers,
+        keywords=["agentic", "research", "workflow"],
+        as_of="2026-01-01",
+        tool_context=context,
+    )
+
+    assert len(result) == 2
+    assert context.state["ranked_papers"] == result
+
+
+def test_relevance_is_zero_when_no_keywords_match() -> None:
+    result = rank_papers(
+        [paper("irrelevant", date(2025, 1, 1), 10)],
+        keywords=["quantum", "biology"],
+        as_of=date(2026, 1, 1),
+        recent_days=730,
+    )
+
+    assert result[0].relevance_score == 0.0

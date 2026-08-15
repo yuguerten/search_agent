@@ -5,6 +5,8 @@ from google.adk.models.lite_llm import LiteLlm
 
 from app.config import get_settings
 
+_MAX_LMSTUDIO_MESSAGE_CHARS = 120_000
+
 
 def _normalize_message_content(content: Any) -> str | list[dict[str, Any]]:
     """Convert ADK content values to LM Studio's accepted content shapes."""
@@ -43,6 +45,32 @@ def _normalize_lmstudio_messages(messages: list[Any]) -> list[dict[str, Any]]:
     return normalized
 
 
+def _limit_lmstudio_messages(
+    messages: list[dict[str, Any]],
+    max_chars: int = _MAX_LMSTUDIO_MESSAGE_CHARS,
+) -> list[dict[str, Any]]:
+    """Keep recent context bounded so local models do not exceed their window."""
+
+    if sum(len(json.dumps(message, default=str)) for message in messages) <= max_chars:
+        return messages
+
+    system_messages = [
+        message for message in messages if message.get("role") == "system"
+    ]
+    recent: list[dict[str, Any]] = []
+    used = sum(len(json.dumps(message, default=str)) for message in system_messages)
+    for message in reversed(messages):
+        if message.get("role") == "system":
+            continue
+        size = len(json.dumps(message, default=str))
+        if used + size > max_chars and recent:
+            break
+        recent.append(message)
+        used += size
+    recent.reverse()
+    return [*system_messages, *recent]
+
+
 def _configure_lmstudio_compatibility() -> None:
     """Patch only the ADK-to-LiteLLM boundary for LM Studio requests."""
 
@@ -55,7 +83,8 @@ def _configure_lmstudio_compatibility() -> None:
 
     async def compatible_acompletion(*args: Any, **kwargs: Any) -> Any:
         if "messages" in kwargs:
-            kwargs["messages"] = _normalize_lmstudio_messages(kwargs["messages"])
+            normalized = _normalize_lmstudio_messages(kwargs["messages"])
+            kwargs["messages"] = _limit_lmstudio_messages(normalized)
         return await original_acompletion(*args, **kwargs)
 
     adk_lite_llm.acompletion = compatible_acompletion

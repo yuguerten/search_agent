@@ -7,20 +7,9 @@ from app.agents.model import build_llm
 from app.config import get_settings
 
 
-def _approved_count(papers) -> int:
-    return len(
-        {
-            paper.get("arxiv_id")
-            for paper in papers
-            if isinstance(paper, dict) and paper.get("arxiv_id")
-        }
-    )
-
-
 def _synthesizer_instruction(context) -> str:
     approved = context.state.get("approved_papers", [])
     target = get_settings().max_papers
-    completion = "complete" if _approved_count(approved) >= target else "incomplete"
     evidence = json.dumps(approved, ensure_ascii=False, default=str)
     return f"""You are the final academic synthesizer.
 
@@ -29,10 +18,9 @@ citation counts, URLs, findings, or references that are not present in it. Every
 paper mentioned in the report must use its exact arXiv ID and title from the JSON.
 Write a concise report with an introduction, paper-by-paper evidence, synthesis,
 comparison, limitations, and research gaps. Cite papers as [n] and copy URLs
-exactly from the evidence. The configured target is {target}; the authoritative completion status is
-{completion}. If status is incomplete, explicitly report the number of validated
-papers and synthesize only those papers; do not pretend the target was reached.
-Do not claim more iterations than the configured loop maximum.
+exactly from the evidence. The configured target is {target}; do not claim the
+research is complete unless that many unique papers are present. Do not claim more
+iterations than the configured loop maximum.
 
 Verified evidence JSON:
 {evidence}
@@ -42,11 +30,13 @@ Verified evidence JSON:
 def guard_without_approved_papers(*, callback_context):
     approved = callback_context.state.get("approved_papers", [])
     target = get_settings().max_papers
-    if approved:
+    if (
+        len({paper.get("arxiv_id") for paper in approved if isinstance(paper, dict)})
+        >= target
+    ):
         return None
 
     candidates = callback_context.state.get("candidates", [])
-    approved_count = _approved_count(approved)
     maximum = get_settings().max_loop_iterations
     return types.Content(
         role="model",
@@ -54,32 +44,10 @@ def guard_without_approved_papers(*, callback_context):
             types.Part(
                 text=(
                     "Research did not reach the configured paper target. "
-                    f"Approved papers: {approved_count}/{target}. Validated candidates collected: "
+                    f"Approved papers: {len(approved)}/{target}. Validated candidates collected: "
                     f"{len(candidates)}. The research loop was bounded to "
                     f"{maximum} iterations. No paper-specific claims or references "
                     "are included because the critic approved no papers."
-                )
-            )
-        ],
-    )
-
-
-def publish_final_status(*, callback_context):
-    approved_count = _approved_count(callback_context.state.get("approved_papers", []))
-    target = get_settings().max_papers
-    status = "complete" if approved_count >= target else "incomplete"
-    output = callback_context.output
-    if isinstance(output, types.Content):
-        body = "\n".join(part.text or "" for part in (output.parts or []) if part.text)
-    else:
-        body = str(output or "")
-    return types.Content(
-        role="model",
-        parts=[
-            types.Part(
-                text=(
-                    f"Research status: {status} ({approved_count}/{target} unique approved papers)."
-                    f"\n\n{body}"
                 )
             )
         ],
@@ -92,6 +60,5 @@ synthesizer_agent = Agent(
     model=build_llm(),
     instruction=_synthesizer_instruction,
     before_agent_callback=guard_without_approved_papers,
-    after_agent_callback=publish_final_status,
     output_key="final_report",
 )
