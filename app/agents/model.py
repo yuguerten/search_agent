@@ -98,15 +98,23 @@ def build_llm() -> LiteLlm:
     if settings.llm_provider.lower() == "lmstudio":
         _configure_lmstudio_compatibility()
 
+    provider = settings.llm_provider.lower()
     model_name = settings.litellm_model
-    if settings.llm_provider.lower() == "lmstudio" and not model_name.startswith(
-        "openai/"
-    ):
-        model_name = f"openai/{model_name}"
+    api_base = settings.litellm_api_base
+    api_key = settings.litellm_api_key
+
+    if provider == "lmstudio":
+        if not model_name.startswith("openai/"):
+            model_name = f"openai/{model_name}"
+    elif provider == "openrouter":
+        if not model_name.startswith("openrouter/"):
+            model_name = f"openrouter/{model_name}"
+        api_base = settings.openrouter_api_base
+        api_key = settings.openrouter_api_key
 
     kwargs = {
         "model": model_name,
-        "api_base": settings.litellm_api_base,
-        "api_key": settings.litellm_api_key,
+        "api_base": api_base,
+        "api_key": api_key,
     }
     return LiteLlm(**kwargs)

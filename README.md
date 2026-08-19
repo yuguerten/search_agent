@@ -27,9 +27,18 @@ cp .env.example .env
 docker compose up -d postgres
 ```
 
-Set the LiteLLM credentials and model in `.env`. Set
-`SEMANTIC_SCHOLAR_API_KEY` when available; the API can be used without a key at
-lower rate limits.
+The default LLM provider is OpenRouter with Nemotron. Export the key before
+starting ADK, or place it in `.env`:
+
+```bash
+export OPENROUTER_API_KEY="sk-or-v1-your-key"
+uv run adk web
+```
+
+Embeddings remain configured independently through LM Studio by default. Set
+`EMBEDDING_PROVIDER` and its API settings if you want to move embeddings too.
+Set `SEMANTIC_SCHOLAR_API_KEY` when available; the API can be used without a key
+at lower rate limits.
 
 Run the ADK playground from the repository root:
 

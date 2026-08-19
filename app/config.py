@@ -8,10 +8,12 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    llm_provider: str = "lmstudio"
-    litellm_model: str = "google/gemma-3-4b"
-    litellm_api_key: str = "lm-studio"
-    litellm_api_base: str = "http://localhost:1234/v1"
+    llm_provider: str = "openrouter"
+    litellm_model: str = "nvidia/nemotron-3.5-lightning:free"
+    litellm_api_key: str | None = None
+    litellm_api_base: str = "https://openrouter.ai/api/v1"
+    openrouter_api_key: str | None = None
+    openrouter_api_base: str = "https://openrouter.ai/api/v1"
 
     semantic_scholar_api_key: str | None = None
     arxiv_api_url: str = "https://export.arxiv.org/api/query"
@@ -19,7 +21,10 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+asyncpg://postgres:postgres@localhost:5432/literature_agent"
     )
+    embedding_provider: str = "lmstudio"
     embedding_model: str = "text-embedding-nomic-embed-text-v1.5"
+    embedding_api_key: str = "lm-studio"
+    embedding_api_base: str = "http://localhost:1234/v1"
     embedding_dimensions: int = 768
 
     recent_days: int = 730
