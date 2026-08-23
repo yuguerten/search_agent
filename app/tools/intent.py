@@ -141,6 +141,20 @@ def update_intent(
 ) -> dict:
     """Build a serializable research intent from the current conversation."""
 
+    if tool_context is not None:
+        captured_question = tool_context.state.get("original_question")
+        captured_answers = tool_context.state.get("clarification_answers")
+        if isinstance(captured_question, str) and captured_question.strip():
+            # Literal Context.user_content captured by the clarifier is more
+            # trustworthy than arguments reconstructed by the dispatcher LLM.
+            original_question = captured_question.strip()
+            if isinstance(captured_answers, list) and all(
+                isinstance(answer, str) for answer in captured_answers
+            ):
+                clarification_answers = [
+                    answer.strip() for answer in captured_answers if answer.strip()
+                ]
+
     context = " ".join([original_question, *clarification_answers]).strip()
     keywords = extract_keyword_candidates(context)
     clarified_question = " ".join(clarification_answers).strip() or None

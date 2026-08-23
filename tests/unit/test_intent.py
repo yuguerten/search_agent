@@ -44,6 +44,38 @@ def test_update_intent_persists_structured_state() -> None:
     assert context.state["search_queries"] == result["search_queries"]
 
 
+def test_update_intent_prefers_literal_inputs_captured_in_session_state() -> None:
+    context = SimpleNamespace(
+        state={
+            "original_question": (
+                "I want to apply distillation on vision language models"
+            ),
+            "clarification_answers": [
+                "any distillation technique",
+                "target model size",
+                "number of parameters, FLOPs",
+            ],
+        }
+    )
+
+    result = update_intent(
+        "For context: dispatcher called tool with parameters",
+        ["transcript text"],
+        tool_context=context,
+    )
+
+    assert result["original_question"] == (
+        "I want to apply distillation on vision language models"
+    )
+    assert result["clarified_question"] == (
+        "any distillation technique target model size number of parameters, FLOPs"
+    )
+    assert "vision" in result["keywords"]
+    assert "language" in result["keywords"]
+    assert "distillation" in result["keywords"]
+    assert "dispatcher" not in result["keywords"]
+
+
 def test_intent_removes_state_of_the_art_boilerplate() -> None:
     keywords = extract_keyword_candidates(
         "I want the state of the art about agentic systems"
@@ -85,6 +117,7 @@ def test_update_intent_resets_previous_research_run_state() -> None:
     assert context.state["arxiv_query_cache"] == {}
     assert context.state["loop_complete"] is False
     assert context.state["report"] is None
+
 
 def test_intent_discards_orchestration_transcript_words() -> None:
     keywords = extract_keyword_candidates(

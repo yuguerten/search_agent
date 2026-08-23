@@ -3,6 +3,7 @@ from google.genai import types
 
 from app.agents.model import build_llm
 from app.agents.workflow import research_workflow
+from app.tools.conversation import capture_user_research_input
 
 
 def _content_text(value: object) -> str:
@@ -66,6 +67,7 @@ comparison, or desired application. Do not search for papers yet. When the inten
 is sufficiently specific, say that clarification is complete and hand off to the
 dispatcher. When clarification is complete, invoke the transfer_to_agent tool for research_workflow. Do not describe the transfer in plain text. Never ask multiple questions in one message.""",
     sub_agents=[research_workflow],
+    before_agent_callback=capture_user_research_input,
     after_agent_callback=route_completed_clarification,
     output_key="clarification_question",
 )

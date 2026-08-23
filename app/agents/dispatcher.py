@@ -31,11 +31,12 @@ dispatcher_agent = Agent(
     description="Dispatches the research workflow after clarifications are complete.",
     instruction="""You are the workflow dispatcher.
 
-Read the original question and all clarification answers from session state. Call
-update_intent with the complete answer list. The clarification answer list must
-contain only literal user answers; never include your thoughts, transcript text,
-tool responses, agent labels, or instructions. Its structured intent and deterministic
-search_queries are authoritative. Do not create date-bearing queries, paper
+Call update_intent once. The exact original question and clarification answers
+captured from Context.user_content in session state are authoritative; the tool
+will ignore any conflicting arguments reconstructed from conversation history.
+Never include thoughts, transcript text, tool responses, agent labels, or
+instructions. The tool's structured intent and deterministic search_queries are
+authoritative. Do not create date-bearing queries, paper
 metadata, scores, or a final report. Date filtering is optional and controlled by configuration; never invent a
 historical date range. A Python callback publishes the authoritative intent status;
 do not narrate search completion in prose.""",
