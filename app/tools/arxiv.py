@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.models import PaperCandidate
 from app.tools.context import ToolContext
 from app.tools.http import request_with_retries
+from app.tools.intent import build_search_queries, extract_concept_candidates
 
 ATOM = "http://www.w3.org/2005/Atom"
 NS = {"atom": ATOM}
@@ -46,22 +47,70 @@ _STOPWORDS = {
 _ARXIV_REQUEST_LOCK = asyncio.Lock()
 _ARXIV_LAST_REQUEST = 0.0
 _MAX_ARXIV_SEARCH_CALLS = 6
-_MAX_ARXIV_RESULTS = 5
+_MAX_ARXIV_RESULTS = 10
 _MAX_ABSTRACT_CHARS = 1600
 
 
 def build_arxiv_query(query: str) -> str:
-    """Convert a natural-language query into an arXiv Boolean term query."""
+    """Render natural or phrase-planned text as a fielded arXiv query."""
 
-    terms = []
-    for token in re.findall(r"[a-z0-9]+", query.lower()):
-        if len(token) < 3 or token in _STOPWORDS or token in terms:
+    if '"' not in query and not re.search(r"\b(?:AND|OR|ANDNOT)\b", query):
+        concepts = extract_concept_candidates(query)
+    else:
+        concepts = []
+        for match in re.finditer(r'"([^"]+)"|([a-zA-Z][a-zA-Z0-9-]*)', query):
+            value = match.group(1) or match.group(2)
+            if value.casefold() in {"and", "or", "andnot"}:
+                continue
+            concepts.append(value)
+
+    def normalise_tokens(value: str) -> list[str]:
+        return [
+            token
+            for token in re.findall(r"[a-z0-9]+", value.casefold())
+            if len(token) >= 3
+            and token not in _STOPWORDS
+            and token
+            not in {
+                "date",
+                "dates",
+                "last",
+                "only",
+                "papers",
+                "query",
+                "recent",
+                "years",
+            }
+            and not token.isdigit()
+            and not (len(token) == 4 and token.startswith(("19", "20")))
+        ]
+
+    def token_clause(token: str) -> str:
+        variants = [token]
+        if token.endswith("ies") and len(token) > 4:
+            variants.append(f"{token[:-3]}y")
+        elif token.endswith("s") and not token.endswith("ss") and len(token) > 4:
+            variants.append(token[:-1])
+        fields = [field for term in variants for field in (f"ti:{term}", f"abs:{term}")]
+        return f"({' OR '.join(fields)})"
+
+    clauses: list[str] = []
+    for concept in concepts:
+        tokens = normalise_tokens(concept)
+        if not tokens:
             continue
-        terms.append(token)
+        if len(tokens) == 1:
+            clause = token_clause(tokens[0])
+        else:
+            phrase = " ".join(tokens)
+            fallback = " AND ".join(token_clause(token) for token in tokens)
+            clause = f'(ti:"{phrase}" OR abs:"{phrase}" OR ({fallback}))'
+        if clause not in clauses:
+            clauses.append(clause)
 
-    if not terms:
+    if not clauses:
         raise ValueError("arXiv query must contain at least one searchable term")
-    return " AND ".join(f"all:{term}" for term in terms)
+    return " AND ".join(clauses)
 
 
 def _clean_text(value: str | None) -> str:
@@ -129,20 +178,35 @@ async def search_arxiv(
 ) -> list[dict[str, Any]]:
     """Search arXiv and return normalized paper metadata.
 
-    This is an ADK-compatible tool. Date filtering is repeated locally because
-    source APIs can return records with incomplete or inconsistent date data.
+    This is an ADK-compatible tool. Date filtering is optional and repeated
+    locally when enabled because source APIs can return incomplete or inconsistent
+    date data.
     """
 
+    search_index = 0
+    if tool_context is not None:
+        search_index = tool_context.state.get("arxiv_search_calls", 0)
+        queries = tool_context.state.get("search_queries", [])
+        if not queries:
+            intent = tool_context.state.get("research_intent", {})
+            if isinstance(intent, dict):
+                queries = intent.get("search_queries", []) or build_search_queries(
+                    intent.get("core_concepts", []) or intent.get("keywords", []),
+                    intent.get("refinement_concepts", []),
+                )
+        if queries:
+            query = queries[search_index % len(queries)]
+            tool_context.state["active_search_query"] = query
     arxiv_query = build_arxiv_query(query)
     effective_max_results = min(max_results, _MAX_ARXIV_RESULTS)
     settings = get_settings()
     policy_end = date.today()
     policy_start = policy_end - timedelta(days=settings.recent_days)
-    # The rolling policy is authoritative. The local model must not narrow it
-    # with stale dates such as 2019-2024 unless explicit date support is added
-    # to the structured user intent.
-    effective_start_date = policy_start.isoformat()
-    effective_end_date = policy_end.isoformat()
+    filter_enabled = settings.enforce_recent_filter
+    # Date filtering is opt-in. When disabled, arXiv results from every
+    # publication date remain eligible and freshness is used only for ranking.
+    effective_start_date = policy_start.isoformat() if filter_enabled else None
+    effective_end_date = policy_end.isoformat() if filter_enabled else None
     cache_key = (
         f"{arxiv_query}|{effective_start_date}|{effective_end_date}|"
         f"{effective_max_results}"
@@ -161,7 +225,7 @@ async def search_arxiv(
         "search_query": arxiv_query,
         "start": 0,
         "max_results": effective_max_results,
-        "sortBy": "submittedDate",
+        "sortBy": "relevance",
         "sortOrder": "descending",
     }
     timeout = httpx.Timeout(connect=15.0, read=60.0, write=15.0, pool=15.0)
@@ -179,11 +243,14 @@ async def search_arxiv(
             response.raise_for_status()
 
     papers = parse_arxiv_feed(response.text)
-    lower_bound = date.fromisoformat(effective_start_date)
-    upper_bound = date.fromisoformat(effective_end_date)
-    papers = [
-        paper for paper in papers if lower_bound <= paper.published_at <= upper_bound
-    ]
+    if filter_enabled:
+        lower_bound = date.fromisoformat(effective_start_date)
+        upper_bound = date.fromisoformat(effective_end_date)
+        papers = [
+            paper
+            for paper in papers
+            if lower_bound <= paper.published_at <= upper_bound
+        ]
     result = [
         paper.model_copy(
             update={"abstract": paper.abstract[:_MAX_ABSTRACT_CHARS]}
@@ -192,6 +259,7 @@ async def search_arxiv(
     ]
     if tool_context is not None:
         tool_context.state["research_window"] = {
+            "filter_enabled": filter_enabled,
             "start_date": effective_start_date,
             "end_date": effective_end_date,
             "recent_days": settings.recent_days,

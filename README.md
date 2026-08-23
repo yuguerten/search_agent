@@ -15,7 +15,7 @@ User
   -> Dispatcher -> Synthesizer -> Report
 ```
 
-The researcher applies the strict rolling two-year filter before ranking. The
+The researcher can optionally apply a configured rolling date filter before ranking;
 ranking combines relevance, age-adjusted citation impact, freshness, and metadata
 quality. The critic performs deterministic checks before its semantic review.
 
@@ -27,9 +27,18 @@ cp .env.example .env
 docker compose up -d postgres
 ```
 
-Set the LiteLLM credentials and model in `.env`. Set
-`SEMANTIC_SCHOLAR_API_KEY` when available; the API can be used without a key at
-lower rate limits.
+The default LLM provider is OpenRouter with Nemotron. Export the key before
+starting ADK, or place it in `.env`:
+
+```bash
+export OPENROUTER_API_KEY="sk-or-v1-your-key"
+uv run adk web
+```
+
+Embeddings remain configured independently through LM Studio by default. Set
+`EMBEDDING_PROVIDER` and its API settings if you want to move embeddings too.
+Set `SEMANTIC_SCHOLAR_API_KEY` when available; the API can be used without a key
+at lower rate limits.
 
 Run the ADK playground from the repository root:
 
@@ -47,4 +56,12 @@ uv run ruff format --check .
 
 The external API and PostgreSQL tools are isolated from the unit tests. Add
 integration tests with mocked HTTP responses before enabling live end-to-end runs.
+
+### PostgreSQL / pgvector
+
+The database must have the pgvector server extension installed. The application enables it automatically with `CREATE EXTENSION IF NOT EXISTS vector` before creating the papers table. If the database user cannot create extensions, run this once as a PostgreSQL administrator:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
 

@@ -1,11 +1,39 @@
+import json
+
 from google.adk.agents import Agent
+from google.genai import types
 
 from app.agents.model import build_llm
 from app.tools.arxiv import search_arxiv
-from app.tools.embeddings import embed_papers_tool
 from app.tools.persistence import persist_papers
 from app.tools.ranking import rank_papers_tool
 from app.tools.semantic_scholar import enrich_with_semantic_scholar
+
+
+def publish_research_status(*, callback_context):
+    candidates = callback_context.state.get("candidates", [])
+    ranked = callback_context.state.get("ranked_papers", [])
+    callback_context.state["research_status"] = {
+        "status": "research_complete",
+        "candidate_count": len(candidates),
+        "ranked_count": len(ranked),
+    }
+    return types.Content(
+        role="model",
+        parts=[
+            types.Part(
+                text=json.dumps(
+                    {
+                        "status": "research_complete",
+                        "candidate_count": len(candidates),
+                        "ranked_count": len(ranked),
+                    },
+                    separators=(",", ":"),
+                )
+            )
+        ],
+    )
+
 
 researcher_agent = Agent(
     name="researcher_agent",
@@ -13,22 +41,25 @@ researcher_agent = Agent(
     model=build_llm(),
     instruction="""You are the research specialist.
 
-For each iteration, make at most one arXiv search call and request no more than five results. Use the dispatcher search queries to search arXiv. Enrich
-candidate papers with Semantic Scholar citation metadata, apply the strict
-two-year date filter, and rank candidates with the deterministic ranking tool.
-Use the configured rolling window from the tools (last 730 days ending today).
+For each iteration, make at most one arXiv search call and request no more than ten results. Use the dispatcher search queries to search arXiv. Enrich
+candidate papers with Semantic Scholar citation metadata and rank candidates with
+the deterministic ranking tool. Apply a publication-date filter only when the
+configured `enforce_recent_filter` setting is enabled; otherwise keep all returned
+publication dates eligible and use freshness only as a ranking signal.
 Never invent citation counts, dates, abstracts, authors, arXiv IDs, or URLs. Do not
-pass a historical date range inferred from the conversation. Pass
-the exact paper list returned by search_arxiv into the enrichment and ranking tools;
-do not reconstruct paper dictionaries or convert authors into a string. Keep all
-candidates in shared state and preserve source identifiers. Embed eligible papers
-and persist them in PostgreSQL with pgvector after ranking. If the critic supplied feedback,
+pass a historical date range inferred from the conversation. Paper metadata moves
+between tools through shared session state. Call enrichment, ranking, and persistence
+without reconstructing or resending paper dictionaries. Keep all candidates in shared
+state and preserve source identifiers. Call persist_papers after ranking; it embeds
+papers locally and writes vectors directly to PostgreSQL.
+Never call or expose embeddings separately, and never pass embedding arrays through
+the LLM. If the critic supplied feedback,
 adjust the next search queries to address it.""",
+    after_agent_callback=publish_research_status,
     tools=[
         search_arxiv,
         enrich_with_semantic_scholar,
         rank_papers_tool,
-        embed_papers_tool,
         persist_papers,
     ],
 )

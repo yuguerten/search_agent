@@ -31,7 +31,7 @@ def _without_arxiv_version(arxiv_id: str) -> str:
 
 
 async def enrich_with_semantic_scholar(
-    papers: list[dict[str, Any]],
+    papers: list[dict[str, Any]] | None = None,
     tool_context: ToolContext | None = None,
 ) -> list[dict[str, Any]]:
     """Attach Semantic Scholar citation metadata to arXiv candidates.
@@ -42,11 +42,25 @@ async def enrich_with_semantic_scholar(
     same paper repeatedly.
     """
 
-    if not papers:
+    state_candidates = (
+        tool_context.state.get("candidates") if tool_context is not None else None
+    )
+    authoritative_papers = (
+        state_candidates if isinstance(state_candidates, list) else papers
+    )
+    if not authoritative_papers:
         return []
 
     settings = get_settings()
-    candidates = canonicalize_papers(papers, tool_context)
+    try:
+        candidates = canonicalize_papers(authoritative_papers, tool_context)
+    except ValueError:
+        state_candidates = (
+            tool_context.state.get("candidates", []) if tool_context is not None else []
+        )
+        if not state_candidates:
+            raise
+        candidates = canonicalize_papers(state_candidates, tool_context)
     identifiers = [
         f"ARXIV:{_without_arxiv_version(paper.arxiv_id)}" for paper in candidates
     ]

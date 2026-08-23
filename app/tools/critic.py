@@ -5,21 +5,35 @@ from typing import Any
 from app.config import get_settings
 from app.models import CriticDecision
 from app.tools.context import ToolContext, canonicalize_papers
+from app.tools.scope import evaluate_scope
 
 
 def evaluate_candidates(
-    papers: list[dict[str, Any]],
-    target_count: int = 5,
+    papers: list[dict[str, Any]] | None = None,
+    target_count: int | None = None,
     min_relevance_score: float | None = None,
     tool_context: ToolContext | None = None,
 ) -> dict[str, Any]:
-    """Apply deterministic critic checks before semantic LLM review."""
+    """Apply deterministic critic checks and accumulate approvals by arXiv ID.
 
-    threshold = min_relevance_score
-    if threshold is None:
-        threshold = get_settings().min_relevance_score
+    ``target_count`` remains for backwards-compatible tool calls, but the
+    configured target is authoritative and cannot be changed by the model.
+    """
 
-    canonical_papers = canonicalize_papers(papers, tool_context)
+    settings = get_settings()
+    target = settings.max_papers
+    threshold = settings.min_relevance_score
+
+    state_ranked = (
+        tool_context.state.get("ranked_papers") if tool_context is not None else None
+    )
+    authoritative_papers = (
+        state_ranked if isinstance(state_ranked, list) else papers or []
+    )
+    canonical_papers = canonicalize_papers(authoritative_papers, tool_context)
+    intent = (
+        tool_context.state.get("research_intent") if tool_context is not None else None
+    )
     decisions: list[CriticDecision] = []
     for paper in canonical_papers:
         reasons: list[str] = []
@@ -27,6 +41,8 @@ def evaluate_candidates(
             reasons.append("missing abstract")
         if paper.relevance_score < threshold:
             reasons.append("below relevance threshold")
+        _, scope_reasons = evaluate_scope(paper, intent)
+        reasons.extend(scope_reasons)
         status = "rejected" if reasons else "approved"
         decisions.append(
             CriticDecision(
@@ -37,27 +53,58 @@ def evaluate_candidates(
             )
         )
 
-    approved_ids = {
-        decision.arxiv_id for decision in decisions if decision.status == "approved"
+    decisions_by_id = {}
+    if tool_context is not None:
+        decisions_by_id = {
+            decision["arxiv_id"]: decision
+            for decision in tool_context.state.get("critic_decisions", [])
+            if isinstance(decision, dict) and decision.get("arxiv_id")
+        }
+    decisions_by_id.update(
+        {decision.arxiv_id: decision.model_dump(mode="json") for decision in decisions}
+    )
+
+    previous_approved = {}
+    if tool_context is not None:
+        previous_approved = {
+            paper["arxiv_id"]: paper
+            for paper in tool_context.state.get("approved_papers", [])
+            if isinstance(paper, dict) and paper.get("arxiv_id")
+        }
+    papers_by_id = {
+        paper.arxiv_id: paper.model_dump(mode="json") for paper in canonical_papers
     }
+    for arxiv_id, paper in previous_approved.items():
+        current = papers_by_id.get(arxiv_id, paper)
+        current["critic_status"] = "approved"
+        current["critic_reasons"] = paper.get(
+            "critic_reasons", ["passed deterministic checks"]
+        )
+        papers_by_id[arxiv_id] = current
+    for paper in papers_by_id.values():
+        if paper.get("arxiv_id") in decisions_by_id:
+            decision = decisions_by_id[paper["arxiv_id"]]
+            if decision["status"] == "approved":
+                paper["critic_status"] = "approved"
+                paper["critic_reasons"] = decision["reasons"]
+
     approved = [
-        paper.model_copy(
-            update={
-                "critic_status": "approved",
-                "critic_reasons": ["passed deterministic checks"],
-            }
-        ).model_dump(mode="json")
-        for paper in canonical_papers
-        if paper.arxiv_id in approved_ids
-    ][:target_count]
-    decisions_json = [decision.model_dump(mode="json") for decision in decisions]
+        paper
+        for paper in papers_by_id.values()
+        if paper.get("critic_status") == "approved"
+    ][:target]
+    decisions_json = list(decisions_by_id.values())
+    ready = len(approved) >= target
     if tool_context is not None:
         tool_context.state["critic_decisions"] = decisions_json
         tool_context.state["approved_papers"] = approved
+        tool_context.state["target_paper_count"] = target
+        tool_context.state["loop_complete"] = ready
 
     return {
         "decisions": decisions_json,
         "approved_papers": approved,
         "approved_count": len(approved),
-        "ready": len(approved) >= target_count,
+        "target_count": target,
+        "ready": ready,
     }
