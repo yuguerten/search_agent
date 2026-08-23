@@ -12,7 +12,13 @@ from app.tools.context import ToolContext, canonicalize_papers
 
 
 def _tokens(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]{3,}", text.lower()))
+    tokens = re.findall(r"[a-z0-9]{3,}", text.lower())
+    return {
+        token[:-1]
+        if token.endswith("s") and not token.endswith("ss") and len(token) > 4
+        else token
+        for token in tokens
+    }
 
 
 def _normalise(values: Iterable[float]) -> list[float]:
@@ -129,8 +135,16 @@ def rank_papers_tool(
     effective_keywords = keywords
     if tool_context is not None:
         intent = tool_context.state.get("research_intent")
-        if isinstance(intent, dict) and intent.get("keywords"):
-            effective_keywords = intent["keywords"]
+        if isinstance(intent, dict):
+            core_concepts = intent.get("core_concepts", [])
+            if core_concepts:
+                effective_keywords = [
+                    token
+                    for concept in core_concepts
+                    for token in re.findall(r"[a-z0-9]{3,}", str(concept).casefold())
+                ]
+            elif intent.get("keywords"):
+                effective_keywords = intent["keywords"]
     ranked = rank_papers(
         canonicalize_papers(papers, tool_context),
         keywords=effective_keywords,
@@ -144,7 +158,9 @@ def rank_papers_tool(
             "start_date": (
                 policy_start.isoformat() if settings.enforce_recent_filter else None
             ),
-            "end_date": policy_end.isoformat() if settings.enforce_recent_filter else None,
+            "end_date": policy_end.isoformat()
+            if settings.enforce_recent_filter
+            else None,
             "recent_days": settings.recent_days,
         }
         tool_context.state["ranked_papers"] = result

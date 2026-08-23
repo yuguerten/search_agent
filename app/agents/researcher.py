@@ -41,7 +41,7 @@ researcher_agent = Agent(
     model=build_llm(),
     instruction="""You are the research specialist.
 
-For each iteration, make at most one arXiv search call and request no more than five results. Use the dispatcher search queries to search arXiv. Enrich
+For each iteration, make at most one arXiv search call and request no more than ten results. Use the dispatcher search queries to search arXiv. Enrich
 candidate papers with Semantic Scholar citation metadata and rank candidates with
 the deterministic ranking tool. Apply a publication-date filter only when the
 configured `enforce_recent_filter` setting is enabled; otherwise keep all returned

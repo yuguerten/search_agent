@@ -66,6 +66,28 @@ def test_rank_tool_uses_dispatcher_keywords_from_state() -> None:
     assert context.state["ranked_papers"] == result
 
 
+def test_rank_tool_uses_core_topic_instead_of_optional_refinements() -> None:
+    papers = [paper("a", date(2025, 1, 1), 10).model_dump(mode="json")]
+    context = SimpleNamespace(
+        state={
+            "research_intent": {
+                "core_concepts": ["agentic systems"],
+                "refinement_concepts": ["observability", "failure detection"],
+                "keywords": ["unrelated-term"],
+            }
+        }
+    )
+
+    result = rank_papers_tool(
+        papers,
+        keywords=["unrelated-term"],
+        as_of="2026-01-01",
+        tool_context=context,
+    )
+
+    assert result[0]["relevance_score"] > 0
+
+
 def test_relevance_is_zero_when_no_keywords_match() -> None:
     result = rank_papers(
         [paper("irrelevant", date(2025, 1, 1), 10)],
@@ -75,6 +97,7 @@ def test_relevance_is_zero_when_no_keywords_match() -> None:
     )
 
     assert result[0].relevance_score == 0.0
+
 
 def test_recent_filter_can_be_disabled() -> None:
     papers = [paper("old", date(2020, 1, 1), 100)]

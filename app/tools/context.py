@@ -1,6 +1,8 @@
 """Compatibility types and paper-state helpers for ADK tools."""
 
+import json
 import re
+from collections.abc import Mapping, Sequence
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -23,8 +25,47 @@ def _normalize_title(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(value).casefold()).strip()
 
 
+def _coerce_paper_payloads(papers: object) -> list[dict[str, Any]]:
+    """Normalize common LLM/ADK argument shapes before model validation."""
+
+    payloads: list[dict[str, Any]] = []
+    pending: list[object] = [papers]
+    while pending:
+        value = pending.pop(0)
+        if isinstance(value, PaperCandidate):
+            payloads.append(value.model_dump(mode="json"))
+            continue
+        if isinstance(value, Mapping):
+            payloads.append(dict(value))
+            continue
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                continue
+            try:
+                decoded = json.loads(text)
+            except json.JSONDecodeError:
+                decoded = None
+            if isinstance(decoded, (Mapping, list)):
+                pending.insert(0, decoded)
+                continue
+            if re.fullmatch(r"(?:\d{4}\.\d{4,5}|[a-z-]+/\d{7})(?:v\d+)?", text):
+                payloads.append({"arxiv_id": text})
+            else:
+                payloads.append({"title": text})
+            continue
+        if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+            pending[0:0] = list(value)
+            continue
+        raise ValueError(
+            "Paper input must be a paper object, a list of paper objects, "
+            "or JSON encoding one of those shapes."
+        )
+    return payloads
+
+
 def canonicalize_papers(
-    papers: list[dict[str, Any]], tool_context: ToolContext | None = None
+    papers: object, tool_context: ToolContext | None = None
 ) -> list[PaperCandidate]:
     """Validate papers or recover shortened objects from session state.
 
@@ -56,7 +97,7 @@ def canonicalize_papers(
         "metadata_score",
         "final_score",
     )
-    for raw in papers:
+    for raw in _coerce_paper_payloads(papers):
         try:
             result.append(PaperCandidate.model_validate(raw))
             continue

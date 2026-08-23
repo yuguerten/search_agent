@@ -46,7 +46,15 @@ async def enrich_with_semantic_scholar(
         return []
 
     settings = get_settings()
-    candidates = canonicalize_papers(papers, tool_context)
+    try:
+        candidates = canonicalize_papers(papers, tool_context)
+    except ValueError:
+        state_candidates = (
+            tool_context.state.get("candidates", []) if tool_context is not None else []
+        )
+        if not state_candidates:
+            raise
+        candidates = canonicalize_papers(state_candidates, tool_context)
     identifiers = [
         f"ARXIV:{_without_arxiv_version(paper.arxiv_id)}" for paper in candidates
     ]

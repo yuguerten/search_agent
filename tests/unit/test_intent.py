@@ -1,6 +1,11 @@
 from types import SimpleNamespace
 
-from app.tools.intent import extract_keyword_candidates, update_intent
+from app.tools.intent import (
+    build_search_queries,
+    extract_concept_candidates,
+    extract_keyword_candidates,
+    update_intent,
+)
 
 
 def test_extract_keyword_candidates_removes_common_words() -> None:
@@ -74,6 +79,106 @@ def test_update_intent_prefers_literal_inputs_captured_in_session_state() -> Non
     assert "language" in result["keywords"]
     assert "distillation" in result["keywords"]
     assert "dispatcher" not in result["keywords"]
+
+
+def test_failed_conversation_builds_phrase_aware_task_queries() -> None:
+    result = update_intent(
+        (
+            "I want to apply distillation on vision language models, "
+            "I want state of the art at the moment"
+        ),
+        [
+            "Multimodal approach. All of them please: image captioning and "
+            "visual question answering. Any target model size."
+        ],
+    )
+
+    assert result["core_concepts"] == ["distillation", "vision language models"]
+    assert result["refinement_concepts"] == [
+        "multimodal",
+        "image captioning",
+        "visual question answering",
+    ]
+    assert all(
+        '"distillation" AND "vision language models"' in query
+        for query in result["search_queries"]
+    )
+    assert any("image captioning" in query for query in result["search_queries"])
+    assert any(
+        "visual question answering" in query for query in result["search_queries"]
+    )
+    assert all("please" not in query for query in result["search_queries"])
+
+
+def test_conversational_preamble_and_non_choice_do_not_become_queries() -> None:
+    context = SimpleNamespace(
+        state={
+            "original_question": (
+                "Hello i am curious to know more about knowledge distillation "
+                "applied for vision language models"
+            ),
+            "clarification_answers": [
+                "I would prefer all of them because im not in a position to pick one",
+                "deployment on edge",
+            ],
+        }
+    )
+
+    result = update_intent(
+        "dispatcher reconstructed the conversation incorrectly",
+        ["ignore this transcript"],
+        tool_context=context,
+    )
+
+    assert result["core_concepts"] == [
+        "knowledge distillation",
+        "vision language models",
+    ]
+    assert result["refinement_concepts"] == ["deployment edge"]
+    assert result["search_queries"] == [
+        '"knowledge distillation" AND "vision language models"',
+        '"knowledge distillation" AND "vision language models" AND "deployment edge"',
+        '"knowledge distillation"',
+    ]
+    rejected_noise = {"hello", "curious", "more", "because", "position", "pick"}
+    assert rejected_noise.isdisjoint(result["keywords"])
+
+
+def test_concept_and_query_generation_is_domain_agnostic() -> None:
+    biology = update_intent(
+        "Find recent methods for protein folding",
+        ["Focus on structure prediction and evaluation benchmarks."],
+    )
+    public_health = update_intent(
+        "Study urban heat and cardiovascular mortality",
+        ["Include longitudinal studies and vulnerable populations."],
+    )
+
+    assert biology["core_concepts"] == ["protein folding"]
+    assert biology["search_queries"] == [
+        '"protein folding"',
+        '"protein folding" AND "structure prediction"',
+        '"protein folding" AND "evaluation benchmarks"',
+    ]
+    assert public_health["core_concepts"] == [
+        "urban heat",
+        "cardiovascular mortality",
+    ]
+    assert "include" not in public_health["keywords"]
+    assert all(
+        '"urban heat" AND "cardiovascular mortality"' in query
+        for query in public_health["search_queries"]
+    )
+
+
+def test_query_builder_preserves_phrases_without_domain_rules() -> None:
+    concepts = extract_concept_candidates(
+        "Compare graph neural networks and molecular property prediction"
+    )
+    queries = build_search_queries(concepts[:1], concepts[1:])
+
+    assert queries[0] == '"graph neural networks"'
+    assert any('"molecular property prediction"' in query for query in queries)
 
 
 def test_intent_removes_state_of_the_art_boilerplate() -> None:

@@ -83,3 +83,36 @@ async def test_malformed_model_payload_uses_canonical_session_candidates(monkeyp
     assert result[0]["arxiv_id"] == "2401.12345v1"
     assert result[0]["authors"] == ["Author"]
     assert context.state["candidates"][0]["arxiv_id"] == "2401.12345v1"
+
+
+async def test_single_mapping_from_adk_is_enriched_without_iterating_keys(monkeypatch):
+    async def fake_request(*args, **kwargs):
+        request = httpx.Request("POST", "https://example.test")
+        return httpx.Response(429, request=request)
+
+    monkeypatch.setattr("app.tools.semantic_scholar.request_with_retries", fake_request)
+    candidate = paper("2401.12345v1")
+    context = SimpleNamespace(state={"candidates": [candidate]})
+
+    result = await enrich_with_semantic_scholar(candidate, context)
+
+    assert [item["arxiv_id"] for item in result] == ["2401.12345v1"]
+
+
+async def test_unusable_payload_falls_back_to_authoritative_candidates(monkeypatch):
+    async def fake_request(*args, **kwargs):
+        request = httpx.Request("POST", "https://example.test")
+        return httpx.Response(429, request=request)
+
+    monkeypatch.setattr("app.tools.semantic_scholar.request_with_retries", fake_request)
+    candidates = [paper("2401.12345v1"), paper("2401.12346v1")]
+    context = SimpleNamespace(state={"candidates": candidates})
+
+    result = await enrich_with_semantic_scholar(
+        ["use all of the papers returned by search"], context
+    )
+
+    assert [item["arxiv_id"] for item in result] == [
+        "2401.12345v1",
+        "2401.12346v1",
+    ]

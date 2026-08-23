@@ -39,6 +39,9 @@ def _tokens(value: object) -> set[str]:
 def _requested_keywords(intent: dict[str, Any] | None) -> set[str]:
     if not intent:
         return set()
+    core_concepts = intent.get("core_concepts", [])
+    if core_concepts:
+        return _tokens(" ".join(str(concept) for concept in core_concepts))
     keywords = intent.get("keywords", [])
     if keywords:
         return _tokens(" ".join(str(keyword) for keyword in keywords))

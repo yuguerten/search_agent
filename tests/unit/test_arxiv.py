@@ -11,9 +11,12 @@ def test_semantic_scholar_ids_drop_arxiv_version_suffix() -> None:
 
 
 def test_build_arxiv_query_splits_natural_language_terms() -> None:
-    assert build_arxiv_query("protein folding algorithms") == (
-        "all:protein AND all:folding AND all:algorithms"
-    )
+    query = build_arxiv_query("protein folding algorithms")
+
+    assert 'ti:"protein folding algorithms"' in query
+    assert 'abs:"protein folding algorithms"' in query
+    assert "ti:protein" in query
+    assert "abs:folding" in query
 
 
 def test_parse_arxiv_feed_normalizes_metadata() -> None:
@@ -48,24 +51,22 @@ def test_build_arxiv_query_ignores_year_tokens() -> None:
     assert "2026" not in query
 
 
-def test_build_arxiv_query_uses_topic_anchors_and_optional_terms() -> None:
+def test_build_arxiv_query_preserves_planned_phrases() -> None:
     query = build_arxiv_query(
-        "agentic systems technical architectures monitoring evaluation"
+        '"urban heat" AND "cardiovascular mortality" AND "longitudinal studies"'
     )
 
-    assert query == (
-        "all:agentic AND all:systems AND "
-        "(all:technical OR all:architectures OR all:monitoring OR all:evaluation)"
-    )
+    assert 'ti:"urban heat"' in query
+    assert 'abs:"cardiovascular mortality"' in query
+    assert 'ti:"longitudinal studies"' in query
+    assert query.count(" AND ") >= 2
 
 
-def test_build_arxiv_query_relaxes_five_term_queries() -> None:
-    query = build_arxiv_query("agentic technical monitoring real environments")
+def test_build_arxiv_query_adds_generic_singular_fallbacks() -> None:
+    query = build_arxiv_query('"graph neural networks"')
 
-    assert query == (
-        "all:agentic AND all:technical AND "
-        "(all:monitoring OR all:real OR all:environments)"
-    )
+    assert "ti:networks" in query
+    assert "ti:network" in query
 
 
 async def test_search_uses_session_plan_instead_of_model_query(monkeypatch) -> None:
@@ -90,7 +91,9 @@ async def test_search_uses_session_plan_instead_of_model_query(monkeypatch) -> N
 
     await search_arxiv("machine learning healthcare", tool_context=context)
 
-    assert captured["params"]["search_query"] == (
-        "all:agentic AND all:systems AND all:monitoring"
+    assert captured["params"]["search_query"] == build_arxiv_query(
+        "agentic systems monitoring"
     )
+    assert captured["params"]["sortBy"] == "relevance"
+    assert captured["params"]["max_results"] == 10
     assert context.state["active_search_query"] == "agentic systems monitoring"

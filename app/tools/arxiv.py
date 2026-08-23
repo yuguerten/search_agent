@@ -13,7 +13,7 @@ from app.config import get_settings
 from app.models import PaperCandidate
 from app.tools.context import ToolContext
 from app.tools.http import request_with_retries
-from app.tools.intent import build_search_queries
+from app.tools.intent import build_search_queries, extract_concept_candidates
 
 ATOM = "http://www.w3.org/2005/Atom"
 NS = {"atom": ATOM}
@@ -47,35 +47,70 @@ _STOPWORDS = {
 _ARXIV_REQUEST_LOCK = asyncio.Lock()
 _ARXIV_LAST_REQUEST = 0.0
 _MAX_ARXIV_SEARCH_CALLS = 6
-_MAX_ARXIV_RESULTS = 5
+_MAX_ARXIV_RESULTS = 10
 _MAX_ABSTRACT_CHARS = 1600
 
 
 def build_arxiv_query(query: str) -> str:
-    """Convert arbitrary natural-language topic text into an arXiv term query."""
+    """Render natural or phrase-planned text as a fielded arXiv query."""
 
-    terms: list[str] = []
-    for token in re.findall(r"[a-z0-9]+", query.lower()):
-        if (
-            len(token) < 3
-            or token in _STOPWORDS
-            or token
-            in {"date", "dates", "last", "only", "papers", "query", "recent", "years"}
-            or token.isdigit()
-            or (len(token) == 4 and token.startswith(("19", "20")))
-            or token in terms
-        ):
+    if '"' not in query and not re.search(r"\b(?:AND|OR|ANDNOT)\b", query):
+        concepts = extract_concept_candidates(query)
+    else:
+        concepts = []
+        for match in re.finditer(r'"([^"]+)"|([a-zA-Z][a-zA-Z0-9-]*)', query):
+            value = match.group(1) or match.group(2)
+            if value.casefold() in {"and", "or", "andnot"}:
+                continue
+            concepts.append(value)
+
+    def normalise_tokens(value: str) -> list[str]:
+        return [
+            token
+            for token in re.findall(r"[a-z0-9]+", value.casefold())
+            if len(token) >= 3
+            and token not in _STOPWORDS
+            and token
+            not in {
+                "date",
+                "dates",
+                "last",
+                "only",
+                "papers",
+                "query",
+                "recent",
+                "years",
+            }
+            and not token.isdigit()
+            and not (len(token) == 4 and token.startswith(("19", "20")))
+        ]
+
+    def token_clause(token: str) -> str:
+        variants = [token]
+        if token.endswith("ies") and len(token) > 4:
+            variants.append(f"{token[:-3]}y")
+        elif token.endswith("s") and not token.endswith("ss") and len(token) > 4:
+            variants.append(token[:-1])
+        fields = [field for term in variants for field in (f"ti:{term}", f"abs:{term}")]
+        return f"({' OR '.join(fields)})"
+
+    clauses: list[str] = []
+    for concept in concepts:
+        tokens = normalise_tokens(concept)
+        if not tokens:
             continue
-        terms.append(token)
+        if len(tokens) == 1:
+            clause = token_clause(tokens[0])
+        else:
+            phrase = " ".join(tokens)
+            fallback = " AND ".join(token_clause(token) for token in tokens)
+            clause = f'(ti:"{phrase}" OR abs:"{phrase}" OR ({fallback}))'
+        if clause not in clauses:
+            clauses.append(clause)
 
-    if not terms:
+    if not clauses:
         raise ValueError("arXiv query must contain at least one searchable term")
-    if len(terms) <= 4:
-        return " AND ".join(f"all:{term}" for term in terms)
-
-    anchors = " AND ".join(f"all:{term}" for term in terms[:2])
-    alternatives = " OR ".join(f"all:{term}" for term in terms[2:8])
-    return f"{anchors} AND ({alternatives})"
+    return " AND ".join(clauses)
 
 
 def _clean_text(value: str | None) -> str:
@@ -156,7 +191,8 @@ async def search_arxiv(
             intent = tool_context.state.get("research_intent", {})
             if isinstance(intent, dict):
                 queries = intent.get("search_queries", []) or build_search_queries(
-                    intent.get("keywords", [])
+                    intent.get("core_concepts", []) or intent.get("keywords", []),
+                    intent.get("refinement_concepts", []),
                 )
         if queries:
             query = queries[search_index % len(queries)]
@@ -189,7 +225,7 @@ async def search_arxiv(
         "search_query": arxiv_query,
         "start": 0,
         "max_results": effective_max_results,
-        "sortBy": "submittedDate",
+        "sortBy": "relevance",
         "sortOrder": "descending",
     }
     timeout = httpx.Timeout(connect=15.0, read=60.0, write=15.0, pool=15.0)

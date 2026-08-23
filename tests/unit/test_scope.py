@@ -63,3 +63,22 @@ def test_scope_accepts_scaling_example_without_special_case() -> None:
 
     assert accepted is True
     assert reasons == []
+
+
+def test_scope_uses_core_concepts_instead_of_optional_refinements() -> None:
+    intent = {
+        "core_concepts": ["protein folding"],
+        "refinement_concepts": ["evaluation benchmarks", "structure prediction"],
+        "keywords": ["unrelated"],
+    }
+
+    accepted, reasons = evaluate_scope(
+        paper(
+            "Protein folding with learned energy functions",
+            "We model the folding process for proteins.",
+        ),
+        intent,
+    )
+
+    assert accepted is True
+    assert reasons == []
