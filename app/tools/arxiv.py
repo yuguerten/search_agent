@@ -143,8 +143,9 @@ async def search_arxiv(
 ) -> list[dict[str, Any]]:
     """Search arXiv and return normalized paper metadata.
 
-    This is an ADK-compatible tool. Date filtering is repeated locally because
-    source APIs can return records with incomplete or inconsistent date data.
+    This is an ADK-compatible tool. Date filtering is optional and repeated
+    locally when enabled because source APIs can return incomplete or inconsistent
+    date data.
     """
 
     search_index = 0
@@ -165,11 +166,11 @@ async def search_arxiv(
     settings = get_settings()
     policy_end = date.today()
     policy_start = policy_end - timedelta(days=settings.recent_days)
-    # The rolling policy is authoritative. The local model must not narrow it
-    # with stale dates such as 2019-2024 unless explicit date support is added
-    # to the structured user intent.
-    effective_start_date = policy_start.isoformat()
-    effective_end_date = policy_end.isoformat()
+    filter_enabled = settings.enforce_recent_filter
+    # Date filtering is opt-in. When disabled, arXiv results from every
+    # publication date remain eligible and freshness is used only for ranking.
+    effective_start_date = policy_start.isoformat() if filter_enabled else None
+    effective_end_date = policy_end.isoformat() if filter_enabled else None
     cache_key = (
         f"{arxiv_query}|{effective_start_date}|{effective_end_date}|"
         f"{effective_max_results}"
@@ -206,11 +207,14 @@ async def search_arxiv(
             response.raise_for_status()
 
     papers = parse_arxiv_feed(response.text)
-    lower_bound = date.fromisoformat(effective_start_date)
-    upper_bound = date.fromisoformat(effective_end_date)
-    papers = [
-        paper for paper in papers if lower_bound <= paper.published_at <= upper_bound
-    ]
+    if filter_enabled:
+        lower_bound = date.fromisoformat(effective_start_date)
+        upper_bound = date.fromisoformat(effective_end_date)
+        papers = [
+            paper
+            for paper in papers
+            if lower_bound <= paper.published_at <= upper_bound
+        ]
     result = [
         paper.model_copy(
             update={"abstract": paper.abstract[:_MAX_ABSTRACT_CHARS]}
@@ -219,6 +223,7 @@ async def search_arxiv(
     ]
     if tool_context is not None:
         tool_context.state["research_window"] = {
+            "filter_enabled": filter_enabled,
             "start_date": effective_start_date,
             "end_date": effective_end_date,
             "recent_days": settings.recent_days,

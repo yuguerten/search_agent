@@ -1,7 +1,5 @@
-from datetime import date, timedelta
 from types import SimpleNamespace
 
-from app.config import get_settings
 from app.tools.intent import extract_keyword_candidates, update_intent
 
 
@@ -29,10 +27,8 @@ def test_update_intent_is_serializable() -> None:
         "2024" not in query and "2026" not in query
         for query in intent["search_queries"]
     )
-    today = date.today()
-    expected_start = today - timedelta(days=get_settings().recent_days)
-    assert intent["start_date"] == expected_start.isoformat()
-    assert intent["end_date"] == today.isoformat()
+    assert intent["start_date"] is None
+    assert intent["end_date"] is None
 
 
 def test_update_intent_persists_structured_state() -> None:
@@ -89,3 +85,18 @@ def test_update_intent_resets_previous_research_run_state() -> None:
     assert context.state["arxiv_query_cache"] == {}
     assert context.state["loop_complete"] is False
     assert context.state["report"] is None
+
+def test_intent_discards_orchestration_transcript_words() -> None:
+    keywords = extract_keyword_candidates(
+        "For context clarifier agent said topic problem you exploring "
+        "evolution attention mechanism natural language processing"
+    )
+
+    assert keywords == [
+        "evolution",
+        "attention",
+        "mechanism",
+        "natural",
+        "language",
+        "processing",
+    ]

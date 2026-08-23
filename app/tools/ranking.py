@@ -28,10 +28,12 @@ def _normalise(values: Iterable[float]) -> list[float]:
 def recent_papers(
     papers: list[PaperCandidate],
     as_of: date,
-    recent_days: int = 730,
+    recent_days: int | None = 730,
 ) -> list[PaperCandidate]:
-    """Apply the strict rolling date policy before citation ranking."""
+    """Optionally filter by recency before citation ranking."""
 
+    if recent_days is None:
+        return list(papers)
     lower_bound = as_of - timedelta(days=recent_days)
     return [paper for paper in papers if lower_bound <= paper.published_at <= as_of]
 
@@ -40,9 +42,9 @@ def rank_papers(
     papers: list[PaperCandidate],
     keywords: list[str],
     as_of: date,
-    recent_days: int = 730,
+    recent_days: int | None = 730,
 ) -> list[PaperCandidate]:
-    """Rank recent candidates using relevance, age-adjusted citations, and freshness."""
+    """Rank candidates using relevance, citations, and optional freshness filtering."""
 
     candidates = recent_papers(papers, as_of=as_of, recent_days=recent_days)
     keyword_tokens = _tokens(" ".join(keywords))
@@ -65,7 +67,11 @@ def rank_papers(
         citation_values.append(math.log1p(citations) / age_years)
 
         age_days = max((as_of - paper.published_at).days, 0)
-        freshness_values.append(1.0 - age_days / max(recent_days, 1))
+        freshness_values.append(
+            1.0 - age_days / max(recent_days, 1)
+            if recent_days is not None
+            else 1.0 / (1.0 + age_years)
+        )
         metadata_values.append(
             sum(
                 bool(value)
@@ -129,13 +135,16 @@ def rank_papers_tool(
         canonicalize_papers(papers, tool_context),
         keywords=effective_keywords,
         as_of=policy_end,
-        recent_days=settings.recent_days,
+        recent_days=(settings.recent_days if settings.enforce_recent_filter else None),
     )
     result = [paper.model_dump(mode="json") for paper in ranked]
     if tool_context is not None:
         tool_context.state["research_window"] = {
-            "start_date": policy_start.isoformat(),
-            "end_date": policy_end.isoformat(),
+            "filter_enabled": settings.enforce_recent_filter,
+            "start_date": (
+                policy_start.isoformat() if settings.enforce_recent_filter else None
+            ),
+            "end_date": policy_end.isoformat() if settings.enforce_recent_filter else None,
             "recent_days": settings.recent_days,
         }
         tool_context.state["ranked_papers"] = result

@@ -15,7 +15,7 @@ User
   -> Dispatcher -> Synthesizer -> Report
 ```
 
-The researcher applies the strict rolling two-year filter before ranking. The
+The researcher can optionally apply a configured rolling date filter before ranking;
 ranking combines relevance, age-adjusted citation impact, freshness, and metadata
 quality. The critic performs deterministic checks before its semantic review.
 

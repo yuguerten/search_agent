@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     litellm_api_base: str = "https://openrouter.ai/api/v1"
     openrouter_api_key: str | None = None
     openrouter_api_base: str = "https://openrouter.ai/api/v1"
+    openrouter_reasoning_enabled: bool = False
 
     semantic_scholar_api_key: str | None = None
     arxiv_api_url: str = "https://export.arxiv.org/api/query"
@@ -28,6 +29,7 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 768
 
     recent_days: int = 730
+    enforce_recent_filter: bool = False
     max_papers: int = 5
     max_loop_iterations: int = 3
     min_relevance_score: float = 0.35

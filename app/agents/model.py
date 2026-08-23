@@ -117,4 +117,6 @@ def build_llm() -> LiteLlm:
         "api_base": api_base,
         "api_key": api_key,
     }
+    if provider == "openrouter":
+        kwargs["reasoning"] = {"enabled": settings.openrouter_reasoning_enabled}
     return LiteLlm(**kwargs)

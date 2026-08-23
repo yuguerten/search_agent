@@ -28,13 +28,16 @@ def publish_dispatch_status(*, callback_context):
 dispatcher_agent = Agent(
     name="dispatcher_agent",
     model=build_llm(),
+    description="Dispatches the research workflow after clarifications are complete.",
     instruction="""You are the workflow dispatcher.
 
 Read the original question and all clarification answers from session state. Call
-update_intent with the complete answer list. Its structured intent and deterministic
+update_intent with the complete answer list. The clarification answer list must
+contain only literal user answers; never include your thoughts, transcript text,
+tool responses, agent labels, or instructions. Its structured intent and deterministic
 search_queries are authoritative. Do not create date-bearing queries, paper
-metadata, scores, or a final report. The date policy is the configured rolling
-window ending today. A Python callback publishes the authoritative intent status;
+metadata, scores, or a final report. Date filtering is optional and controlled by configuration; never invent a
+historical date range. A Python callback publishes the authoritative intent status;
 do not narrate search completion in prose.""",
     tools=[update_intent],
     after_agent_callback=publish_dispatch_status,

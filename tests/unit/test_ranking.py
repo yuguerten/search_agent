@@ -75,3 +75,10 @@ def test_relevance_is_zero_when_no_keywords_match() -> None:
     )
 
     assert result[0].relevance_score == 0.0
+
+def test_recent_filter_can_be_disabled() -> None:
+    papers = [paper("old", date(2020, 1, 1), 100)]
+
+    result = recent_papers(papers, as_of=date(2026, 1, 1), recent_days=None)
+
+    assert [item.arxiv_id for item in result] == ["old"]

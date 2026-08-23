@@ -9,7 +9,21 @@ from app.tools.context import ToolContext
 
 _STOP_WORDS = {
     "about",
+    "according",
     "after",
+    "agent",
+    "answers",
+    "ask",
+    "begin",
+    "call",
+    "clarification",
+    "clarifier",
+    "context",
+    "content",
+    "delegate",
+    "every",
+    "final",
+    "for",
     "any",
     "art",
     "aspect",
@@ -19,29 +33,55 @@ _STOP_WORDS = {
     "focus",
     "focusing",
     "find",
+    "exploring",
     "interested",
     "interest",
     "into",
+    "instructions",
     "that",
     "the",
     "know",
     "latest",
     "moment",
+    "need",
+    "once",
     "open",
     "their",
     "important",
     "underlying",
+    "paper",
+    "perform",
+    "probably",
+    "problem",
+    "report",
     "research",
     "researcher",
     "researchers",
     "specific",
     "state",
+    "says",
+    "said",
+    "session",
+    "synthesis",
+    "synthesizer",
+    "thought",
+    "topic",
+    "transfer",
+    "turn",
+    "until",
+    "user",
     "want",
+    "we",
+    "workflow",
+    "you",
     "what",
+    "when",
     "where",
     "whether",
     "which",
     "with",
+    "should",
+    "this",
 }
 
 
@@ -83,7 +123,7 @@ def build_search_queries(keywords: list[str]) -> list[str]:
     variants = [
         terms[:6],
         terms[::2][:5],
-        [*terms[:2], *terms[-4:]],
+        terms[1:7] if len(terms) > 1 else terms[:6],
     ]
     queries: list[str] = []
     for variant in variants:
@@ -105,8 +145,12 @@ def update_intent(
     keywords = extract_keyword_candidates(context)
     clarified_question = " ".join(clarification_answers).strip() or None
     settings = get_settings()
-    end_date = date.today()
-    start_date = end_date - timedelta(days=settings.recent_days)
+    end_date = date.today() if settings.enforce_recent_filter else None
+    start_date = (
+        end_date - timedelta(days=settings.recent_days)
+        if end_date is not None
+        else None
+    )
     intent = ResearchIntent(
         original_question=original_question,
         clarified_question=clarified_question,
