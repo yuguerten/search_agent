@@ -44,3 +44,15 @@ async def test_persistence_embeds_inside_python_without_returning_vectors(monkey
     assert result == {"status": "stored", "paper_count": 1}
     assert calls["embeddings"] is vectors
     assert calls["close"] is True
+
+
+@pytest.mark.asyncio
+async def test_persistence_skips_authoritative_empty_ranked_state() -> None:
+    context = SimpleNamespace(state={"ranked_papers": []})
+
+    result = await persistence.persist_papers(
+        papers=["not a paper object"],
+        tool_context=context,
+    )
+
+    assert result == {"status": "skipped", "paper_count": 0}

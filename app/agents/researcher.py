@@ -47,11 +47,11 @@ the deterministic ranking tool. Apply a publication-date filter only when the
 configured `enforce_recent_filter` setting is enabled; otherwise keep all returned
 publication dates eligible and use freshness only as a ranking signal.
 Never invent citation counts, dates, abstracts, authors, arXiv IDs, or URLs. Do not
-pass a historical date range inferred from the conversation. Pass
-the exact paper list returned by search_arxiv into the enrichment and ranking tools;
-do not reconstruct paper dictionaries or convert authors into a string. Keep all
-candidates in shared state and preserve source identifiers. Call persist_papers
-after ranking; it embeds papers locally and writes vectors directly to PostgreSQL.
+pass a historical date range inferred from the conversation. Paper metadata moves
+between tools through shared session state. Call enrichment, ranking, and persistence
+without reconstructing or resending paper dictionaries. Keep all candidates in shared
+state and preserve source identifiers. Call persist_papers after ranking; it embeds
+papers locally and writes vectors directly to PostgreSQL.
 Never call or expose embeddings separately, and never pass embedding arrays through
 the LLM. If the critic supplied feedback,
 adjust the next search queries to address it.""",

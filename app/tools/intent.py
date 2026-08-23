@@ -22,6 +22,7 @@ _STOP_WORDS = {
     "applying",
     "are",
     "art",
+    "as",
     "ask",
     "aspect",
     "at",
@@ -34,6 +35,7 @@ _STOP_WORDS = {
     "can",
     "clarification",
     "clarifier",
+    "classify",
     "content",
     "context",
     "could",
@@ -41,6 +43,7 @@ _STOP_WORDS = {
     "does",
     "doing",
     "dont",
+    "dunno",
     "every",
     "exploring",
     "final",
@@ -73,6 +76,7 @@ _STOP_WORDS = {
     "me",
     "might",
     "moment",
+    "my",
     "need",
     "no",
     "not",
@@ -102,6 +106,7 @@ _STOP_WORDS = {
     "state",
     "synthesis",
     "synthesizer",
+    "tbh",
     "that",
     "the",
     "their",
@@ -121,6 +126,7 @@ _STOP_WORDS = {
     "using",
     "want",
     "we",
+    "well",
     "what",
     "when",
     "where",
@@ -129,20 +135,27 @@ _STOP_WORDS = {
     "with",
     "workflow",
     "would",
+    "yeah",
     "you",
 }
 
 _GENERIC_EDGE_WORDS = {
     "approach",
     "approaches",
+    "architecture",
+    "architectures",
     "area",
     "areas",
     "constraint",
     "constraints",
+    "domain",
+    "domains",
     "example",
     "examples",
     "goal",
     "goals",
+    "info",
+    "information",
     "method",
     "methods",
     "paper",
@@ -187,12 +200,17 @@ def _normalise_phrase(value: str) -> str:
 
 
 def _concept_tokens(value: str) -> list[str]:
-    return [
+    tokens = [
         token
         for token in re.findall(r"[a-zA-Z][a-zA-Z0-9-]{1,}", value.casefold())
         if token not in _STOP_WORDS
         and not token.isdigit()
         and not (len(token) == 4 and token.startswith(("19", "20")))
+    ]
+    aliases = {"serie": "series"}
+    return [
+        aliases.get(token, f"{token}n" if token.endswith("atio") else token)
+        for token in tokens
     ]
 
 
@@ -290,9 +308,14 @@ def build_search_queries(
         return " AND ".join(f'"{concept}"' for concept in concepts)
 
     queries = [format_query(base)]
+    core_tokens = {token for concept in base for token in concept.split()}
     ordered_refinements = sorted(
         enumerate(refinements),
-        key=lambda item: (-len(item[1].split()), item[0]),
+        key=lambda item: (
+            -min(len(set(item[1].split()) - core_tokens), 2),
+            item[0],
+            -len(item[1].split()),
+        ),
     )
     for _, refinement in ordered_refinements:
         query = format_query([*base, refinement])
@@ -339,6 +362,10 @@ def _merge_concepts(texts: list[str], excluded: list[str], limit: int = 8) -> li
             len(concept.split()) == 1 for concept in extracted
         ):
             extracted = [" ".join(extracted)]
+        elif len(extracted) >= 2 and all(
+            len(concept.split()) == 1 for concept in extracted[:2]
+        ):
+            extracted = [" ".join(extracted[:2]), *extracted[2:]]
         for concept in extracted:
             key = _normalise_phrase(concept)
             if key and key not in excluded_keys and concept not in concepts:

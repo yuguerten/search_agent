@@ -8,7 +8,7 @@ from app.tools.embeddings import embed_papers
 
 
 async def persist_papers(
-    papers: list[dict[str, Any]],
+    papers: list[dict[str, Any]] | None = None,
     tool_context: ToolContext | None = None,
 ) -> dict[str, Any]:
     """Embed and persist papers without exposing vectors to the language model.
@@ -17,7 +17,15 @@ async def persist_papers(
     PostgreSQL adapter and only a small status object is returned to the agent.
     """
 
-    candidates = canonicalize_papers(papers, tool_context)
+    state_ranked = (
+        tool_context.state.get("ranked_papers") if tool_context is not None else None
+    )
+    authoritative_papers = (
+        state_ranked if isinstance(state_ranked, list) else papers or []
+    )
+    candidates = canonicalize_papers(authoritative_papers, tool_context)
+    if not candidates:
+        return {"status": "skipped", "paper_count": 0}
     embeddings = await embed_papers(candidates)
     store = PostgresPaperStore()
     try:

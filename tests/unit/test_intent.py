@@ -171,6 +171,32 @@ def test_concept_and_query_generation_is_domain_agnostic() -> None:
     )
 
 
+def test_uncertain_domain_conversation_keeps_scientific_content_only() -> None:
+    result = update_intent(
+        "what's the state of the art architecture of time series classification?",
+        [
+            "I have bacteria trajectories and i want to classify them, tbh i "
+            "dunno which domain is this? biomedical as well?",
+            "like i have motion and appearance information of my bacteria as a "
+            "time serie",
+            "yeah for motion i have speed acceleratio.. appearance i have shape info",
+        ],
+    )
+
+    assert result["core_concepts"] == ["time series classification"]
+    noise = {"architecture", "tbh", "dunno", "domain", "my", "yeah", "well"}
+    assert noise.isdisjoint(result["keywords"])
+    refinements = " ".join(result["refinement_concepts"])
+    assert "bacteria trajectories" in refinements
+    assert "motion" in refinements
+    assert "appearance" in refinements
+    assert all(
+        '"time series classification"' in query for query in result["search_queries"]
+    )
+    assert any("bacteria trajectories" in query for query in result["search_queries"])
+    assert any("motion appearance" in query for query in result["search_queries"])
+
+
 def test_query_builder_preserves_phrases_without_domain_rules() -> None:
     concepts = extract_concept_candidates(
         "Compare graph neural networks and molecular property prediction"

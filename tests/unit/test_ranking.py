@@ -88,6 +88,23 @@ def test_rank_tool_uses_core_topic_instead_of_optional_refinements() -> None:
     assert result[0]["relevance_score"] > 0
 
 
+def test_rank_tool_ignores_reconstructed_papers_when_candidates_are_in_state() -> None:
+    candidate = paper("state-paper", date(2025, 1, 1), 10).model_dump(mode="json")
+    context = SimpleNamespace(
+        state={
+            "candidates": [candidate],
+            "research_intent": {"core_concepts": ["agentic systems"]},
+        }
+    )
+
+    result = rank_papers_tool(
+        papers=["not a paper object"],
+        tool_context=context,
+    )
+
+    assert [item["arxiv_id"] for item in result] == ["state-paper"]
+
+
 def test_relevance_is_zero_when_no_keywords_match() -> None:
     result = rank_papers(
         [paper("irrelevant", date(2025, 1, 1), 10)],

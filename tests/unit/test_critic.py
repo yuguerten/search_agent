@@ -79,6 +79,19 @@ def test_critic_uses_configured_threshold_instead_of_model_argument() -> None:
     assert result["approved_count"] == 1
     assert result["target_count"] == 5
 
+
+def test_critic_uses_authoritative_empty_ranked_state() -> None:
+    context = SimpleNamespace(state={"ranked_papers": []})
+
+    result = evaluate_candidates(
+        papers=["not a paper object"],
+        tool_context=context,
+    )
+
+    assert result["decisions"] == []
+    assert result["approved_count"] == 0
+
+
 def test_deterministic_critic_publishes_configured_status_without_llm() -> None:
     context = SimpleNamespace(
         state={"ranked_papers": [complete_paper("2401.12349").model_dump(mode="json")]},

@@ -9,7 +9,7 @@ from app.tools.scope import evaluate_scope
 
 
 def evaluate_candidates(
-    papers: list[dict[str, Any]],
+    papers: list[dict[str, Any]] | None = None,
     target_count: int | None = None,
     min_relevance_score: float | None = None,
     tool_context: ToolContext | None = None,
@@ -24,9 +24,12 @@ def evaluate_candidates(
     target = settings.max_papers
     threshold = settings.min_relevance_score
 
-    authoritative_papers = papers
-    if tool_context is not None and tool_context.state.get("ranked_papers"):
-        authoritative_papers = tool_context.state["ranked_papers"]
+    state_ranked = (
+        tool_context.state.get("ranked_papers") if tool_context is not None else None
+    )
+    authoritative_papers = (
+        state_ranked if isinstance(state_ranked, list) else papers or []
+    )
     canonical_papers = canonicalize_papers(authoritative_papers, tool_context)
     intent = (
         tool_context.state.get("research_intent") if tool_context is not None else None

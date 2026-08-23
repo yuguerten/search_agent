@@ -121,9 +121,9 @@ def rank_papers(
 
 
 def rank_papers_tool(
-    papers: list[dict[str, Any]],
-    keywords: list[str],
-    as_of: str,
+    papers: list[dict[str, Any]] | None = None,
+    keywords: list[str] | None = None,
+    as_of: str | None = None,
     recent_days: int = 730,
     tool_context: ToolContext | None = None,
 ) -> list[dict[str, Any]]:
@@ -132,7 +132,13 @@ def rank_papers_tool(
     settings = get_settings()
     policy_end = date.today()
     policy_start = policy_end - timedelta(days=settings.recent_days)
-    effective_keywords = keywords
+    state_candidates = (
+        tool_context.state.get("candidates") if tool_context is not None else None
+    )
+    authoritative_papers = (
+        state_candidates if isinstance(state_candidates, list) else papers or []
+    )
+    effective_keywords = keywords or []
     if tool_context is not None:
         intent = tool_context.state.get("research_intent")
         if isinstance(intent, dict):
@@ -146,7 +152,7 @@ def rank_papers_tool(
             elif intent.get("keywords"):
                 effective_keywords = intent["keywords"]
     ranked = rank_papers(
-        canonicalize_papers(papers, tool_context),
+        canonicalize_papers(authoritative_papers, tool_context),
         keywords=effective_keywords,
         as_of=policy_end,
         recent_days=(settings.recent_days if settings.enforce_recent_filter else None),
